@@ -1,26 +1,11 @@
-/*
-   Code for Microcanonical Molecular Dynamics simulation of a Lennard-Jones
-   system in a periodic boundary
-
-   Written by Vladislav Negodin
-
-   Based.
-   And based on C code by Cameron F. Abrams, 2004
-
-   compile using "g++ -o mdlj mdlj.cpp"
-*/
-
 #define _USE_MATH_DEFINES
 #define ROOT_PROCESS 0
 
 #include <iostream>
 #include <vector>
 #include <fstream>
-#include <string>
 #include <random>
-#include <ctime>
 #include <cmath>
-#include <exception>
 #include <mpi.h>
 
 // writing in one line causes c++17 warnings
@@ -31,9 +16,6 @@ using std::string;
 using std::vector;
 using std::ofstream;
 
-// global communicator
-MPI_Comm COMM;
-
 struct Particle {
     double x, y, z;
     double vx = 0, vy = 0, vz = 0;
@@ -41,7 +23,7 @@ struct Particle {
     double image_x = 0, image_y = 0, image_z = 0;
 };
 
-struct SystemOptions {
+struct __system_options {
     int dimx, dimy, dimz;
     unsigned particles_number = 216;
     double density = 0.5;
@@ -61,11 +43,16 @@ struct SystemOptions {
     bool read_and_print_with_velocity = true;
 };
 
-struct MPIOptions {
+struct __mpi_options {
     MPI_Datatype dt_particles;
     MPI_Comm COMM = MPI_COMM_WORLD;
     int cells, rank, coords[3], neighbors[3][2];
 };
+
+// global values for program configurations
+MPI_Comm COMM;
+__system_options OPTIONS;
+__mpi_options MPI_OPTIONS;
 
 void PrintUsageInfo() {
     cout << "mdlj usage:" << "\n";
@@ -91,26 +78,25 @@ void PrintUsageInfo() {
     cout << "\t -h                 Print this info" << "\n";
 }
 
-SystemOptions ParseCommandLineArguments(int argc, char** argv) {
-    SystemOptions options;
+void ParseCommandLineArguments(int argc, char** argv) {
     for (int arg_index = 1; arg_index < argc; ++arg_index) {
         string arg_str = argv[arg_index];
-        if (arg_str == "-dx") options.dimx = atoi(argv[++arg_index]);
-        else if (arg_str == "-dy") options.dimy = atoi(argv[++arg_index]);
-        else if (arg_str == "-dz") options.dimz = atoi(argv[++arg_index]);
-        else if (arg_str == "-N") options.particles_number = atoi(argv[++arg_index]);
-        else if (arg_str == "-rho") options.density = atof(argv[++arg_index]);
-        else if (arg_str == "-dt") options.dt = atof(argv[++arg_index]);
-        else if (arg_str == "-rc") options.cutoff_radius = atof(argv[++arg_index]);
-        else if (arg_str == "-ns") options.steps_number = atoi(argv[++arg_index]);
-        else if (arg_str == "-T0") options.T0 = atof(argv[++arg_index]);
-        else if (arg_str == "-thermof") options.print_thermo_frequency = atoi(argv[++arg_index]);
-        else if (arg_str == "-outf") options.print_out_frequency = atoi(argv[++arg_index]);
-        else if (arg_str == "-onefile") options.write_output_in_one_file = true;
-        else if (arg_str == "-ecorr") options.use_energy_correction = true;
-        else if (arg_str == "-seed") options.seed = (unsigned)atoi(argv[++arg_index]);
-        else if (arg_str == "-uf") options.print_unfolded_coordinates = true;
-        else if (arg_str == "-novelo") options.read_and_print_with_velocity = false;
+        if (arg_str == "-dx") OPTIONS.dimx = atoi(argv[++arg_index]);
+        else if (arg_str == "-dy") OPTIONS.dimy = atoi(argv[++arg_index]);
+        else if (arg_str == "-dz") OPTIONS.dimz = atoi(argv[++arg_index]);
+        else if (arg_str == "-N") OPTIONS.particles_number = atoi(argv[++arg_index]);
+        else if (arg_str == "-rho") OPTIONS.density = atof(argv[++arg_index]);
+        else if (arg_str == "-dt") OPTIONS.dt = atof(argv[++arg_index]);
+        else if (arg_str == "-rc") OPTIONS.cutoff_radius = atof(argv[++arg_index]);
+        else if (arg_str == "-ns") OPTIONS.steps_number = atoi(argv[++arg_index]);
+        else if (arg_str == "-T0") OPTIONS.T0 = atof(argv[++arg_index]);
+        else if (arg_str == "-thermof") OPTIONS.print_thermo_frequency = atoi(argv[++arg_index]);
+        else if (arg_str == "-outf") OPTIONS.print_out_frequency = atoi(argv[++arg_index]);
+        else if (arg_str == "-onefile") OPTIONS.write_output_in_one_file = true;
+        else if (arg_str == "-ecorr") OPTIONS.use_energy_correction = true;
+        else if (arg_str == "-seed") OPTIONS.seed = (unsigned)atoi(argv[++arg_index]);
+        else if (arg_str == "-uf") OPTIONS.print_unfolded_coordinates = true;
+        else if (arg_str == "-novelo") OPTIONS.read_and_print_with_velocity = false;
         else if (arg_str == "-h") {
             PrintUsageInfo();
             MPI_Abort(COMM, EXIT_SUCCESS);
@@ -121,20 +107,18 @@ SystemOptions ParseCommandLineArguments(int argc, char** argv) {
         }
     }
 
-    options.simple_box_size = cbrt(
-        options.particles_number
-        / options.density
-        / options.dimx
-        / options.dimy
-        / options.dimz
+    OPTIONS.simple_box_size = cbrt(
+        OPTIONS.particles_number
+        / OPTIONS.density
+        / OPTIONS.dimx
+        / OPTIONS.dimy
+        / OPTIONS.dimz
     );
-    double rr3 = 1 / (options.cutoff_radius * options.cutoff_radius * options.cutoff_radius);
-    options.energy_cut = 4 * (rr3 * rr3 * rr3 * rr3 - rr3 * rr3);
-    if (options.use_energy_correction) {
-        options.energy_correction = 8 * M_PI * options.density * (rr3 * rr3 * rr3 / 9.0 - rr3 / 3.0);
+    double rr3 = 1 / (OPTIONS.cutoff_radius * OPTIONS.cutoff_radius * OPTIONS.cutoff_radius);
+    OPTIONS.energy_cut = 4 * (rr3 * rr3 * rr3 * rr3 - rr3 * rr3);
+    if (OPTIONS.use_energy_correction) {
+        OPTIONS.energy_correction = 8 * M_PI * OPTIONS.density * (rr3 * rr3 * rr3 / 9.0 - rr3 / 3.0);
     }
-
-    return options;
 }
 
 void MPI_Apply(int ierr, string error_message) {
@@ -150,7 +134,7 @@ void MPI_Apply(int ierr, string error_message) {
     }
 }
 
-void init_cart_comm(const SystemOptions& options, MPIOptions& mpi_options) {
+void init_cart_comm() {
     /*
      * create Cartesian communicator and
      * initiate `MPIOptions` member that will save
@@ -158,28 +142,28 @@ void init_cart_comm(const SystemOptions& options, MPIOptions& mpi_options) {
     */
 
     // check if number of workers equals number of cells
-    MPI_Comm_size(MPI_COMM_WORLD, &mpi_options.cells);
-    int cells_theory = options.dimx * options.dimy * options.dimz;
-    if (mpi_options.cells != cells_theory) {
+    MPI_Comm_size(MPI_COMM_WORLD, &MPI_OPTIONS.cells);
+    int cells_theory = OPTIONS.dimx * OPTIONS.dimy * OPTIONS.dimz;
+    if (MPI_OPTIONS.cells != cells_theory) {
         cout << "ERROR: number of processes not equal to number of cells.\n"
-            << "Processes:\t" << mpi_options.cells << "\n"
+            << "Processes:\t" << MPI_OPTIONS.cells << "\n"
             << "Cells:\t\t" << cells_theory << "\n";
         MPI_Abort(COMM, EXIT_FAILURE);
     }
 
     // init particle data type
     MPI_Apply(
-        MPI_Type_contiguous(12, MPI_DOUBLE, &mpi_options.dt_particles),
+        MPI_Type_contiguous(12, MPI_DOUBLE, &MPI_OPTIONS.dt_particles),
         "Fail in creating particle mpi-data type"
     );
     MPI_Apply(
-        MPI_Type_commit(&mpi_options.dt_particles),
+        MPI_Type_commit(&MPI_OPTIONS.dt_particles),
         "Fail in commiting particle mpi-data type"
     );
 
     // Create Cartesian Commutator
     int reorder = 0;
-    int dims[3] = {options.dimx, options.dimy, options.dimz}, periods[3] = {1,1,1};
+    int dims[3] = {OPTIONS.dimx, OPTIONS.dimy, OPTIONS.dimz}, periods[3] = {1,1,1};
     MPI_Apply(
         MPI_Cart_create(MPI_COMM_WORLD, 3, dims, periods, reorder, &COMM),
         "Fail to create Cartesian communicator"
@@ -187,150 +171,19 @@ void init_cart_comm(const SystemOptions& options, MPIOptions& mpi_options) {
     
     // Get rank of the process
     MPI_Apply(
-        MPI_Cart_map(COMM, 3, dims, periods, &mpi_options.rank),
+        MPI_Cart_map(COMM, 3, dims, periods, &MPI_OPTIONS.rank),
         string("Fail in getting rank of the process.\n")
     );
 
     // Get process coordinates
     MPI_Apply(
-        MPI_Cart_coords(COMM, mpi_options.rank, 3, mpi_options.coords),
+        MPI_Cart_coords(COMM, MPI_OPTIONS.rank, 3, MPI_OPTIONS.coords),
         string("fail in getting coordinates.\n") +
-        string("rank:\t") + to_string(mpi_options.rank)
+        string("rank:\t") + to_string(MPI_OPTIONS.rank)
     );
 }
 
-// rewrite in terms of GeneratePositions_MPI
-void WriteParticlesXYZ_MPI(ofstream& streamer, const vector<Particle>& particles,
-                           const SystemOptions& options, const MPIOptions& mpi_options) {
-    
-    // Define pointers for `MPI_Gatherv`, neccecary only in root process
-    Particle *GatheredParticles = nullptr;
-    int *counts = nullptr, *displs = nullptr;
-
-    // Create array `counts` for `MPI_Gatherv`
-    // will be fulfilled in MPI_Gather
-    //if (mpi_options.rank == ROOT_PROCESS) {
-        counts = new int[mpi_options.cells];
-    //}
-
-    // Gather numbers of particles from each process
-    int particles_in_cell = (int)(particles.size());
-    MPI_Apply(
-        MPI_Gather(&particles_in_cell, 1, MPI_INT,
-                   counts, mpi_options.cells, MPI_INT,
-                   ROOT_PROCESS, COMM),
-        string("Fail in WriteParticlesXYZ_MPI -> MPI_Gather\n") + 
-        "Sending number of particles to root process\n" + 
-        "process_rank\t" + to_string(mpi_options.rank)
-    );
-
-    cout << mpi_options.rank << ' ' << particles_in_cell << "\n";
-    for (int i = 0; i < mpi_options.cells; ++i)
-        cout << counts[i] << ' ';
-    cout << "\n";
-
-    delete[] GatheredParticles;
-    delete[] counts;
-    delete[] displs;
-
-    return;
-
-    // Create array `displs` for `MPI_Gatherv` (for root process)
-    if (mpi_options.rank == ROOT_PROCESS) {
-        displs = new int[mpi_options.cells];
-        displs[0] = 0;
-        for (int i = 1; i < mpi_options.cells; ++i) {
-            displs[i] = displs[i - 1] + counts[i - 1];
-        }
-    }
-
-    // Gather particles from all processes via `MPI_Gatherv`
-    GatheredParticles = new Particle[options.particles_number];
-    MPI_Apply(
-        MPI_Gatherv(particles.data(), particles.size(), mpi_options.dt_particles,
-                    GatheredParticles, counts, displs, mpi_options.dt_particles,
-                    ROOT_PROCESS, COMM),
-        string("Fail in WriteParticlesXYZ_MPI -> MPI_Gatherv\n") + 
-        "Sending particles to root process\n" + 
-        "process_rank\t" + to_string(mpi_options.rank)
-    );
-
-    delete[] GatheredParticles;
-    delete[] counts;
-    delete[] displs;
-
-    return;
-    // переписать https://rookiehpc.org/mpi/docs/mpi_in_place/index.html
-    MPI_Apply(
-        MPI_Gatherv(particles.data(), particles.size(), mpi_options.dt_particles,
-                           GatheredParticles, counts, displs, mpi_options.dt_particles,
-                           ROOT_PROCESS, COMM),
-        string("Fail in WriteParticlesXYZ_MPI -> MPI_Gatherv.\n") + 
-        "process_rank\t" + to_string(mpi_options.rank)
-    );
-
-    if (mpi_options.rank == ROOT_PROCESS) {
-        int id_x = 0, id_y = 0, id_z = 0;
-        int corner_rank, curr_rank, corner_coordinates[3] = {0, 0, 0};
-
-        // get rank of process with (0,0,0) coordinates
-        MPI_Apply(
-            MPI_Cart_rank(COMM, corner_coordinates, &corner_rank),
-            string("ERROR: fail in getting rank of the corner process (0,0,0).\n") + 
-            "rank: " + to_string(mpi_options.rank)
-        );
-
-        for (unsigned i = 0; i < mpi_options.cells; ++i) {
-            // get rank of the next process in geometric order
-            curr_rank = corner_rank;
-            MPI_Apply(
-                MPI_Cart_shift(COMM, 0, id_x, &curr_rank, &curr_rank),
-                string("ERROR: fail in getting shift in X dimension.\n") + 
-                "rank: " + to_string(mpi_options.rank) + "\n" + 
-                "tagret coords: " + to_string(id_x) + ' ' + 
-                to_string(id_y) + ' ' + to_string(id_z)
-            );
-            MPI_Apply(
-                MPI_Cart_shift(COMM, 1, id_y, &curr_rank, &curr_rank),
-                string("ERROR: fail in getting shift in Y dimension.\n") + 
-                "rank: " + to_string(mpi_options.rank) + "\n" + 
-                "tagret coords: " + to_string(id_x) + ' ' + 
-                to_string(id_y) + ' ' + to_string(id_z)
-            );
-            MPI_Apply(
-                MPI_Cart_shift(COMM, 2, id_z, &curr_rank, &curr_rank),
-                string("ERROR: fail in getting shift in Z dimension.\n") + 
-                "rank: " + to_string(mpi_options.rank) + "\n" + 
-                "tagret coords: " + to_string(id_x) + ' ' + 
-                to_string(id_y) + ' ' + to_string(id_z)
-            );
-            
-            // write particles
-            for (int k = 0; k < counts[curr_rank]; ++k) {
-                Particle p = GatheredParticles[k + displs[i]];
-                streamer << p.x << ' ' << p.y << ' ' << p.z << ' ' << p.vx << ' ' << p.vy << ' ' << p.vz << "\n";
-            }
-
-            // make step of geometric indices
-            id_x++;
-            if (id_x == options.dimx) {
-                id_x = 0;
-                id_y++;
-                if (id_y == options.dimy) {
-                    id_y = 0;
-                    id_z++;
-                }
-            }
-        }
-    }
-
-    delete[] GatheredParticles; GatheredParticles = nullptr;
-    delete[] counts; counts = nullptr;
-    delete[] displs; displs = nullptr;
-}
-
-
-vector<Particle> GeneratePositions_MPI(const SystemOptions& options, const MPIOptions& mpi_options, MPI_Comm COMM) {
+vector<Particle> GeneratePositions_MPI() {
     /*
      * Generates all particles in root process memory
      * then send it to all other processes
@@ -344,36 +197,36 @@ vector<Particle> GeneratePositions_MPI(const SystemOptions& options, const MPIOp
 
     // root process generates all particles in a sc1 and 
     // scatters particles for their cells
-    if (mpi_options.rank == ROOT_PROCESS) {
+    if (MPI_OPTIONS.rank == ROOT_PROCESS) {
         // Find the lowest perfect cube, n3, greater than or equal to the number of particles
         int lattice_size = 1;
         while (lattice_size * lattice_size * lattice_size 
-               * options.dimx * options.dimy * options.dimz 
-               < (int)(options.particles_number)) {
+               * OPTIONS.dimx * OPTIONS.dimy * OPTIONS.dimz 
+               < (int)(OPTIONS.particles_number)) {
             lattice_size++;
         }
 
-        vector< vector<Particle> > particles_divided_by_cells(mpi_options.cells);
+        vector< vector<Particle> > particles_divided_by_cells(MPI_OPTIONS.cells);
 
         // Generate particles in simple cubic (sc) lattice
         int index_x = 0, index_y = 0, index_z = 0, rank, coords[3] = {0,0,0};
-        for (unsigned index = 0; index < options.particles_number; ++index) {
+        for (unsigned index = 0; index < OPTIONS.particles_number; ++index) {
             // get coordinates for corresponding cell
-            coords[0] = (index_x * options.dimx) / lattice_size;
-            coords[1] = (index_y * options.dimy) / lattice_size;
-            coords[2] = (index_z * options.dimz) / lattice_size;
+            coords[0] = (index_x * OPTIONS.dimx) / lattice_size;
+            coords[1] = (index_y * OPTIONS.dimy) / lattice_size;
+            coords[2] = (index_z * OPTIONS.dimz) / lattice_size;
             MPI_Apply(
                 MPI_Cart_rank(COMM, coords, &rank),
                 string("Fail in getting rank from coordinates\n") + 
                 "coordinates\t" + to_string(coords[0]) + ' ' + to_string(coords[1]) + ' ' + to_string(coords[2]) + 
-                "process rank\t" + to_string(mpi_options.rank)
+                "process rank\t" + to_string(MPI_OPTIONS.rank)
             );
 
             // push particle for corresponding vector
             particles_divided_by_cells[rank].push_back({
-                ((double)index_x + 0.5) * options.simple_box_size * options.dimx / lattice_size,
-                ((double)index_y + 0.5) * options.simple_box_size * options.dimy / lattice_size,
-                ((double)index_z + 0.5) * options.simple_box_size * options.dimz / lattice_size
+                ((double)index_x + 0.5) * OPTIONS.simple_box_size * OPTIONS.dimx / lattice_size,
+                ((double)index_y + 0.5) * OPTIONS.simple_box_size * OPTIONS.dimy / lattice_size,
+                ((double)index_z + 0.5) * OPTIONS.simple_box_size * OPTIONS.dimz / lattice_size
             });
 
             // make step for geometric indices
@@ -390,16 +243,16 @@ vector<Particle> GeneratePositions_MPI(const SystemOptions& options, const MPIOp
 
 
         // Construct info arrays for `MPI_Scatterv` from vector
-        counts = new int[mpi_options.cells];
-        displs = new int[mpi_options.cells];
-        for (int i = 0; i < mpi_options.cells; ++i) {
+        counts = new int[MPI_OPTIONS.cells];
+        displs = new int[MPI_OPTIONS.cells];
+        for (int i = 0; i < MPI_OPTIONS.cells; ++i) {
             counts[i] = particles_divided_by_cells[i].size();
             displs[i] = (i == 0)? 0 : displs[i - 1] + counts[i - 1];
         }
 
         // flatten particles
-        sendbuff = new Particle[options.particles_number];
-        for (int i = 0; i < mpi_options.cells; ++i) {
+        sendbuff = new Particle[OPTIONS.particles_number];
+        for (int i = 0; i < MPI_OPTIONS.cells; ++i) {
             for (int j = 0; j < counts[i]; ++j) {
                 sendbuff[displs[i] + j] = particles_divided_by_cells[i][j];
            
@@ -413,7 +266,7 @@ vector<Particle> GeneratePositions_MPI(const SystemOptions& options, const MPIOp
                    &number_of_particles, 1, MPI_INT, 
                    ROOT_PROCESS, COMM),
        string("Fail in GeneratePositions_MPI -> MPI_Scatter\n") + 
-       "process rank\t" + to_string(mpi_options.rank)
+       "process rank\t" + to_string(MPI_OPTIONS.rank)
     );
     
     // allocate memory for input
@@ -421,11 +274,11 @@ vector<Particle> GeneratePositions_MPI(const SystemOptions& options, const MPIOp
 
     // send particles for cells
     MPI_Apply(
-        MPI_Scatterv(sendbuff, counts, displs, mpi_options.dt_particles,
+        MPI_Scatterv(sendbuff, counts, displs, MPI_OPTIONS.dt_particles,
                      particles_for_current_process, number_of_particles,
-                     mpi_options.dt_particles, ROOT_PROCESS, COMM),
+                     MPI_OPTIONS.dt_particles, ROOT_PROCESS, COMM),
         string("Fail in GeneratePositions_MPI -> MPI_Scatter\n") + 
-        "process rank\t" + to_string(mpi_options.rank)
+        "process rank\t" + to_string(MPI_OPTIONS.rank)
     );
 
     // convert to vector
@@ -441,7 +294,61 @@ vector<Particle> GeneratePositions_MPI(const SystemOptions& options, const MPIOp
     return particles;
 }
 
-void GenerateVelocities(vector<Particle>& particles, const SystemOptions& options, std::mt19937& rng) {
+void Write_particlesXYZ(ofstream& stream, const vector<Particle>& particles) {
+    for (const auto& p : particles)
+        cout << p.x << ' ' << p.y << ' ' << p.z << ' ' << p.vx << ' ' << p.vy << ' ' << p.vz << "\n";
+}
+
+// rewrite in terms of GeneratePositions_MPI
+/*void WriteParticlesXYZ_MPI(ofstream& stream, const vector<Particle>& particles) {
+    
+    // Pointers for `MPI_Gatherv`, neccecary only in root process
+    Particle *GatheredParticles = nullptr;
+    int *counts = nullptr, *displs = nullptr;
+
+    // allocate memory for `counts` array
+    if (MPI_OPTIONS.rank == ROOT_PROCESS) {
+        counts = new int[MPI_OPTIONS.cells];
+    }
+
+    // get number of particles in each cell
+    MPI_Apply(
+        MPI_Gather(particles.data(), particles.size(), MPI_OPTIONS.dt_particles,
+                   counts, 1, MPI_OPTIONS.dt_particles,
+                   ROOT_PROCESS, COMM),
+        string("Fail in WriteParticlesXYZ_MPI -> MPI_Gather\n") + 
+       "process rank\t" + to_string(MPI_OPTIONS.rank)
+    );
+
+    if (MPI_OPTIONS.rank == ROOT_PROCESS) {
+        // allocate memory for `displs` array
+        displs = new int[MPI_OPTIONS.cells];
+        for(int i = 0; i < MPI_OPTIONS.cells; ++i)
+            displs[i] = (i == 0) ? 0 : displs[i - 1] + counts[i - 1];
+        
+        // allocate memory for `recvbuf` array
+        GatheredParticles = new Particle[OPTIONS.particles_number];
+    }
+
+    // Get particles from all cells
+    MPI_Apply(
+        MPI_Gatherv(particles.data(), particles.size(), MPI_OPTIONS.dt_particles,
+                    GatheredParticles, counts, displs, MPI_OPTIONS.dt_particles,
+                    ROOT_PROCESS, COMM),
+        string("Fail in WriteParticlesXYZ_MPI -> MPI_Gatherv\n") + 
+       "process rank\t" + to_string(MPI_OPTIONS.rank)
+    );
+
+    if (MPI_OPTIONS.rank == ROOT_PROCESS) {
+        Write_particlesXYZ(stream, particles);
+    }
+
+    delete[] counts;
+    delete[] displs;
+    delete[] GatheredParticles;
+}*/
+
+void GenerateVelocities(vector<Particle>& particles, std::mt19937& rng) {
     std::normal_distribution<double> distribution(0, 1);
     
     for (auto& particle : particles) {
@@ -457,9 +364,9 @@ void GenerateVelocities(vector<Particle>& particles, const SystemOptions& option
         center_of_mass.vy += particle.vy;
         center_of_mass.vz += particle.vz;
     }
-    center_of_mass.vx /= options.particles_number;
-    center_of_mass.vy /= options.particles_number;
-    center_of_mass.vz /= options.particles_number;
+    center_of_mass.vx /= OPTIONS.particles_number;
+    center_of_mass.vy /= OPTIONS.particles_number;
+    center_of_mass.vz /= OPTIONS.particles_number;
     
     // Take away any center-of-mass drift and calculate kinetic energy
     double kinetic_energy = 0.0;
@@ -473,8 +380,8 @@ void GenerateVelocities(vector<Particle>& particles, const SystemOptions& option
     }
 
     // Set the system's temperature to the initial temperature T0
-    double T_current = kinetic_energy / options.particles_number * 2 / 3;
-    double velocity_factor = sqrt(options.T0 / T_current);
+    double T_current = kinetic_energy / OPTIONS.particles_number * 2 / 3;
+    double velocity_factor = sqrt(OPTIONS.T0 / T_current);
     for (auto& particle : particles) {
         particle.vx *= velocity_factor;
         particle.vy *= velocity_factor;
@@ -485,32 +392,35 @@ void GenerateVelocities(vector<Particle>& particles, const SystemOptions& option
 // write function to get energy
 
 int main(int argc, char* argv[]) {
-    SystemOptions options = ParseCommandLineArguments(argc, argv);
+    ParseCommandLineArguments(argc, argv);
 
     MPI_Init(&argc, &argv);
 
-    MPIOptions mpi_options;
-    init_cart_comm(options, mpi_options);
+    init_cart_comm();
 
     // Output some initial information
-    // if (mpi_options.rank == ROOT_PROCESS) {
+    // if (MPI_OPTIONS.rank == ROOT_PROCESS) {
     //     cout << "# NVE MD Simulation of a Lennard - Jones fluid" << "\n";
-    //     cout << "# dims = [" << options.dimx << ", " << options.dimy << ", " << options.dimz << "]\n";
-    //     cout << "# L = " << options.simple_box_size << " rho = " << options.density << " N = "
-    //         << options.particles_number << " r_cut = " << options.cutoff_radius << "\n";
-    //     cout << "# Steps number = " << options.steps_number << " seed = " << options.seed 
-    //         << " dt = " << options.dt << "\n";
+    //     cout << "# dims = [" << OPTIONS.dimx << ", " << OPTIONS.dimy << ", " << OPTIONS.dimz << "]\n";
+    //     cout << "# L = " << OPTIONS.simple_box_size << " rho = " << OPTIONS.density << " N = "
+    //         << OPTIONS.particles_number << " r_cut = " << OPTIONS.cutoff_radius << "\n";
+    //     cout << "# Steps number = " << OPTIONS.steps_number << " seed = " << OPTIONS.seed 
+    //         << " dt = " << OPTIONS.dt << "\n";
     // }
 
-    vector<Particle> particles = GeneratePositions_MPI(options, mpi_options, COMM);
+    vector<Particle> particles = GeneratePositions_MPI();
 
-    cout << mpi_options.rank << "\n";
+    cout << MPI_OPTIONS.rank << "\n";
     for (const auto& p : particles)
         cout << p.x << ' ' << p.y << ' ' << p.z << "\n";
     cout << "\n";
 
+    //std::mt19937 rng;
+
+    //GenerateVelocities(particles, rng);
+
     // Free the datatype created
-    MPI_Type_free(&mpi_options.dt_particles);
+    MPI_Type_free(&MPI_OPTIONS.dt_particles);
  
     // Finish with mpi
     MPI_Finalize();
