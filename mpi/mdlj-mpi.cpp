@@ -53,6 +53,7 @@ struct __mpi_options {
 MPI_Comm COMM;
 __system_options OPTIONS;
 __mpi_options MPI_OPTIONS;
+vector<Particle> particles;
 
 void PrintUsageInfo() {
     cout << "mdlj usage:" << "\n";
@@ -183,7 +184,7 @@ void init_cart_comm() {
     );
 }
 
-vector<Particle> GeneratePositions_MPI() {
+void GeneratePositions_MPI() {
     /*
      * Generates all particles in root process memory
      * then send it to all other processes
@@ -282,7 +283,7 @@ vector<Particle> GeneratePositions_MPI() {
     );
 
     // convert to vector
-    vector<Particle> particles;
+    particles.clear();
     for (int i = 0; i < number_of_particles; ++i)
         particles.push_back(particles_for_current_process[i]);
 
@@ -290,17 +291,19 @@ vector<Particle> GeneratePositions_MPI() {
     delete[] sendbuff;
     delete[] counts;
     delete[] displs;
-    
-    return particles;
 }
 
-void Write_particlesXYZ(ofstream& stream, const vector<Particle>& particles) {
-    for (const auto& p : particles)
-        cout << p.x << ' ' << p.y << ' ' << p.z << ' ' << p.vx << ' ' << p.vy << ' ' << p.vz << "\n";
+void WriteParticlesXYZ(ofstream& stream, Particle* buff) {
+    /*
+     * function for testing WriteParticlesXYZ_MPI
+    */
+
+    for (int i = 0; i < OPTIONS.particles_number; ++i)
+        cout << buff[i].x << ' ' << buff[i].y << ' ' << buff[i].z << ' '
+             << buff[i].vx << ' ' << buff[i].vy << ' ' << buff[i].vz << "\n";
 }
 
-// rewrite in terms of GeneratePositions_MPI
-/*void WriteParticlesXYZ_MPI(ofstream& stream, const vector<Particle>& particles) {
+void WriteParticlesXYZ_MPI(ofstream& stream) {
     
     // Pointers for `MPI_Gatherv`, neccecary only in root process
     Particle *GatheredParticles = nullptr;
@@ -312,12 +315,13 @@ void Write_particlesXYZ(ofstream& stream, const vector<Particle>& particles) {
     }
 
     // get number of particles in each cell
+    int particles_per_cell = particles.size();
     MPI_Apply(
-        MPI_Gather(particles.data(), particles.size(), MPI_OPTIONS.dt_particles,
-                   counts, 1, MPI_OPTIONS.dt_particles,
+        MPI_Gather(&particles_per_cell, 1, MPI_INT,
+                   counts, 1, MPI_INT,
                    ROOT_PROCESS, COMM),
         string("Fail in WriteParticlesXYZ_MPI -> MPI_Gather\n") + 
-       "process rank\t" + to_string(MPI_OPTIONS.rank)
+        "process rank\t" + to_string(MPI_OPTIONS.rank)
     );
 
     if (MPI_OPTIONS.rank == ROOT_PROCESS) {
@@ -336,19 +340,19 @@ void Write_particlesXYZ(ofstream& stream, const vector<Particle>& particles) {
                     GatheredParticles, counts, displs, MPI_OPTIONS.dt_particles,
                     ROOT_PROCESS, COMM),
         string("Fail in WriteParticlesXYZ_MPI -> MPI_Gatherv\n") + 
-       "process rank\t" + to_string(MPI_OPTIONS.rank)
+        "process rank\t" + to_string(MPI_OPTIONS.rank)
     );
 
     if (MPI_OPTIONS.rank == ROOT_PROCESS) {
-        Write_particlesXYZ(stream, particles);
+        WriteParticlesXYZ(stream, GatheredParticles);
     }
 
     delete[] counts;
     delete[] displs;
     delete[] GatheredParticles;
-}*/
+}
 
-void GenerateVelocities(vector<Particle>& particles, std::mt19937& rng) {
+void GenerateVelocities(std::mt19937& rng) {
     std::normal_distribution<double> distribution(0, 1);
     
     for (auto& particle : particles) {
@@ -392,9 +396,9 @@ void GenerateVelocities(vector<Particle>& particles, std::mt19937& rng) {
 // write function to get energy
 
 int main(int argc, char* argv[]) {
-    ParseCommandLineArguments(argc, argv);
-
     MPI_Init(&argc, &argv);
+
+    ParseCommandLineArguments(argc, argv);
 
     init_cart_comm();
 
@@ -408,18 +412,22 @@ int main(int argc, char* argv[]) {
     //         << " dt = " << OPTIONS.dt << "\n";
     // }
 
-    vector<Particle> particles = GeneratePositions_MPI();
+    GeneratePositions_MPI();
 
-    cout << MPI_OPTIONS.rank << "\n";
-    for (const auto& p : particles)
-        cout << p.x << ' ' << p.y << ' ' << p.z << "\n";
-    cout << "\n";
+    // cout << MPI_OPTIONS.rank << "\n";
+    // for (const auto& p : particles)
+    //     cout << p.x << ' ' << p.y << ' ' << p.z << "\n";
+    // cout << "\n";
 
-    //std::mt19937 rng;
+    std::mt19937 rng;
 
-    //GenerateVelocities(particles, rng);
+    GenerateVelocities(rng);
 
-    // Free the datatype created
+
+    ofstream out;
+    WriteParticlesXYZ_MPI(out);
+
+    // Free the datatype
     MPI_Type_free(&MPI_OPTIONS.dt_particles);
  
     // Finish with mpi
