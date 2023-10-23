@@ -1,4 +1,3 @@
 *.out
-**/Makefile
 **.txt
 .vscode
