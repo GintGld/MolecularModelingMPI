@@ -9,6 +9,8 @@ using std::string;
 
 __system_options OPTIONS;
 vector<Particle> particles;
+double potential_energy;
+double kinetic_energy;
 
 void PrintUsageInfo() {
     cout << "mdlj usage:" << "\n";
@@ -77,7 +79,7 @@ void ParseCommandLineArguments(int argc, char** argv) {
     }
 }
 
-vector< vector<Particle> > __GeneratePositionsPerCell() {
+vector< vector<Particle> > __generate_positions_per_cell() {
     // Find the lowest perfect cube, n3, greater than or equal to the number of particles
     int lattice_size = 1;
     while (lattice_size * lattice_size * lattice_size 
@@ -165,7 +167,7 @@ void GenerateVelocities(std::mt19937& rng) {
     }
 }
 
-void __WriteParticlesXYZ(ofstream& stream, Particle* buff) {
+void __write_particles_XYZ(ofstream& stream, Particle* buff) {
     /*
      * function for testing WriteParticlesXYZ_MPI
     */
@@ -174,3 +176,4 @@ void __WriteParticlesXYZ(ofstream& stream, Particle* buff) {
         cout << buff[i].x << ' ' << buff[i].y << ' ' << buff[i].z << ' '
              << buff[i].vx << ' ' << buff[i].vy << ' ' << buff[i].vz << "\n";
 }
+

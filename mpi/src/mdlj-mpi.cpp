@@ -99,7 +99,7 @@ void GeneratePositions_MPI() {
     if (MPI_OPTIONS.rank == ROOT_PROCESS) {
         // create vector of vectors to separate
         // particles for corresponding cells
-        vector< vector<Particle> > particles_divided_by_cells = __GeneratePositionsPerCell();
+        vector< vector<Particle> > particles_divided_by_cells = __generate_positions_per_cell();
 
         // Construct info arrays for `MPI_Scatterv` from vector
         counts = new int[MPI_OPTIONS.cells];
@@ -195,10 +195,14 @@ void WriteParticlesXYZ_MPI(ofstream& stream) {
     );
 
     if (MPI_OPTIONS.rank == ROOT_PROCESS) {
-        __WriteParticlesXYZ(stream, GatheredParticles);
+        __write_particles_XYZ(stream, GatheredParticles);
     }
 
     delete[] counts;
     delete[] displs;
     delete[] GatheredParticles;
+}
+
+void MakeSimulationStep() {
+
 }

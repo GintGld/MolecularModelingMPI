@@ -30,3 +30,5 @@ void finilize_cart_comm();
 
 void GeneratePositions_MPI();
 void WriteParticlesXYZ_MPI(std::ofstream& stream);
+
+void MakeSimulationStep();

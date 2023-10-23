@@ -39,14 +39,19 @@ struct __system_options {
 
 extern __system_options OPTIONS;
 extern std::vector<Particle> particles;
+extern double potential_energy;
+extern double kinetic_energy;
 
 void PrintUsageInfo();
 void ParseCommandLineArguments(int argc, char** argv);
 
 // non public function, used only from `GeneratePositions_MPI`
-std::vector< std::vector<Particle> > __GeneratePositionsPerCell();
+std::vector< std::vector<Particle> > __generate_positions_per_cell();
 
 void GenerateVelocities(std::mt19937& rng);
 
 // non public function, used only from `WriteParticlesXYZ_MPI`
-void __WriteParticlesXYZ(std::ofstream& stream, Particle* buff);
+void __write_particles_XYZ(std::ofstream& stream, Particle* buff);
+
+void __compute_forces_and_potential_energy();
+void __first_half_step();
