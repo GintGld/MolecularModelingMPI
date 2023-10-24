@@ -10,6 +10,11 @@ int main(int argc, char** argv) {
     ParseCommandLineArguments(argc, argv);
     init_cart_comm(argc, argv);
 
+    if (MPI_OPTIONS.cells != 2) {
+        cout << "Invalid number of processes. Expected 2.\n";
+        return 1;
+    }
+
     int coords[3];
     OPTIONS.global_particles_number = (MPI_OPTIONS.rank == 0) ? 1 : 0;
     if (MPI_OPTIONS.rank == 0) {
