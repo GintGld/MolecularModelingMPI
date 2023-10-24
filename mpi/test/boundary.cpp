@@ -11,7 +11,7 @@ int main(int argc, char** argv) {
     init_cart_comm(argc, argv);
 
     int coords[3];
-    OPTIONS.particles_number = (MPI_OPTIONS.rank == 0) ? 1 : 0;
+    OPTIONS.global_particles_number = (MPI_OPTIONS.rank == 0) ? 1 : 0;
     if (MPI_OPTIONS.rank == 0) {
         MPI_Cart_coords(COMM, 1, 3, coords);
         particles = {
