@@ -250,7 +250,105 @@ __get_neighbor_particles_MPI() {
 }
 
 void __apply_periodic_boundary_conditions_MPI() {
+    vector< vector<int> > particles_to_send(6);
+    vector<int> particles_to_delete;
 
+    // collect particles id to send
+    for (int i = 0; i < OPTIONS.particles_number; ++i) {
+        if (particles[i].x < 0) {
+            particles[i].x += OPTIONS.simple_box_size;
+            particles[i].image_x -= 1;
+            particles_to_send[0].push_back(i);
+            particles_to_delete.push_back(i);
+            continue;
+        }
+        if (particles[i].x > OPTIONS.simple_box_size) {
+            particles[i].x -= OPTIONS.simple_box_size;
+            particles[i].image_x += 1;
+            particles_to_send[1].push_back(i);
+            particles_to_delete.push_back(i);
+            continue;
+        }
+        if (particles[i].y < 0) {
+            particles[i].y += OPTIONS.simple_box_size;
+            particles[i].image_y -= 1;
+            particles_to_send[2].push_back(i);
+            particles_to_delete.push_back(i);
+            continue;
+        }
+        if (particles[i].y > OPTIONS.simple_box_size) {
+            particles[i].y -= OPTIONS.simple_box_size;
+            particles[i].image_y += 1;
+            particles_to_send[3].push_back(i);
+            particles_to_delete.push_back(i);
+            continue;
+        }
+        if (particles[i].z < 0) {
+            particles[i].z += OPTIONS.simple_box_size;
+            particles[i].image_z -= 1;
+            particles_to_send[4].push_back(i);
+            particles_to_delete.push_back(i);
+            continue;
+        }
+        if (particles[i].z > OPTIONS.simple_box_size) {
+            particles[i].z -= OPTIONS.simple_box_size;
+            particles[i].image_z += 1;
+            particles_to_send[5].push_back(i);
+            particles_to_delete.push_back(i);
+            continue;
+        }
+    }
+
+    // number of particles to send
+    int send_size = particles_to_send[0].size() + 
+                    particles_to_send[1].size() + 
+                    particles_to_send[2].size() + 
+                    particles_to_send[3].size() + 
+                    particles_to_send[4].size() + 
+                    particles_to_send[5].size();
+
+    // generate send info
+    Particle* sbuff = (send_size == 0) ? nullptr : new Particle[send_size];
+    int scounts[6], sdispls[6];
+    for (int i = 0; i < 6; ++i) {
+        scounts[i] = particles_to_send[i].size();
+        sdispls[i] = (i == 0) ? 0 : sdispls[i - 1] + scounts[i - 1];
+
+        for (int j = 0; j < scounts[i]; ++j)
+            sbuff[sdispls[i] + j] = particles[particles_to_send[i][j]];
+    }
+
+    // get number of particles to load
+    int rcounts[6], rdispls[6];
+    MPI_Apply(
+        MPI_Neighbor_alltoall(scounts, 1, MPI_INT, rcounts, 1, MPI_INT, COMM),
+        string("Fail in __apply_periodic_boundary_conditions_MPI -> MPI_Neighbor_alltoall\n") + 
+        "process rank\t" + to_string(MPI_OPTIONS.rank)
+    );
+
+    // generate receive displs
+    for (int i = 0; i < 6; ++i)
+        rdispls[i] = (i == 0) ? 0 : rdispls[i - 1] + rcounts[i - 1];
+
+    // collect neighbors particles
+    int number_to_load = rdispls[5] + rcounts[5];
+    Particle* rbuff = (number_to_load == 0) ? nullptr : new Particle[number_to_load];
+    MPI_Apply(
+        MPI_Neighbor_alltoallv(sbuff, scounts, sdispls, MPI_OPTIONS.dt_particles,
+                            rbuff, rcounts, rdispls, MPI_OPTIONS.dt_particles, COMM),
+        string("Fail in __apply_periodic_boundary_conditions_MPI -> MPI_Neighbor_alltoallv\n") + 
+        "process rank\t" + to_string(MPI_OPTIONS.rank)
+    );
+
+    // delete sended particles
+    for(int i = particles_to_delete.size() - 1; i >= 0; --i)
+        particles.erase(particles.begin() + particles_to_delete[i]);
+
+    if (number_to_load > 0)
+        particles.insert(particles.end(), rbuff, rbuff + number_to_load);
+
+    delete[] sbuff;
+    delete[] rbuff;
 }
 
 void __compute_forces_MPI() {
