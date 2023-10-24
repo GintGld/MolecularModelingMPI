@@ -220,17 +220,14 @@ __get_neighbor_particles_MPI() {
         "process rank\t" + to_string(MPI_OPTIONS.rank)
     );
 
+    // make info arrays
     for (int i = 0; i < 6; ++i) {
         neighbor_number += counts[i];
         displs[i] = (i == 0) ? 0 : displs[i - 1] + counts[i - 1];
     }
 
-    // cout << MPI_OPTIONS.rank << ' ' << neighbor_number << "\n";
-    // for (int i = 0; i < 6; ++i)
-    //     cout << counts[i] << ' ' << displs[i] << "\n";
-
+    // get particles from particles
     Particle* buff = new Particle[neighbor_number];
-
     MPI_Apply(
         MPI_Neighbor_allgatherv(particles.data(), particles.size(), MPI_OPTIONS.dt_particles,
                                 buff, counts, displs, MPI_OPTIONS.dt_particles,
@@ -239,6 +236,7 @@ __get_neighbor_particles_MPI() {
         "process rank\t" + to_string(MPI_OPTIONS.rank)
     );
 
+    // convert to vector
     vector< vector<Particle> > neighbor_particles(6);
     for (int i = 0; i < 6; ++i) {
         for (int j = 0; j < counts[i]; ++j) {
