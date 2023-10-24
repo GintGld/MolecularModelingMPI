@@ -110,7 +110,7 @@ void GeneratePositions_MPI() {
         }
 
         // flatten particles
-        sendbuff = new Particle[OPTIONS.particles_number];
+        sendbuff = new Particle[OPTIONS.global_particles_number];
         for (int i = 0; i < MPI_OPTIONS.cells; ++i) {
             for (int j = 0; j < counts[i]; ++j) {
                 sendbuff[displs[i] + j] = particles_divided_by_cells[i][j];
@@ -151,13 +151,13 @@ void GeneratePositions_MPI() {
     delete[] displs;
 }
 
-void WriteParticlesXYZ_MPI(ofstream& stream) {
+void WriteParticlesXYZ_MPI(ofstream& stream, double time) {
     /*
      * Collect particles from all cells and
      * Write them using `WriteParticlesXYZ`
     */
     // Pointers for `MPI_Gatherv`, neccecary only in root process
-    Particle *GatheredParticles = nullptr;
+    Particle *rbuff = nullptr;
     int *counts = nullptr, *displs = nullptr;
 
     // allocate memory for `counts` array
@@ -182,25 +182,38 @@ void WriteParticlesXYZ_MPI(ofstream& stream) {
             displs[i] = (i == 0) ? 0 : displs[i - 1] + counts[i - 1];
         
         // allocate memory for `recvbuf` array
-        GatheredParticles = new Particle[OPTIONS.particles_number];
+        rbuff = new Particle[OPTIONS.global_particles_number];
     }
 
     // Get particles from all cells
     MPI_Apply(
         MPI_Gatherv(particles.data(), particles.size(), MPI_OPTIONS.dt_particles,
-                    GatheredParticles, counts, displs, MPI_OPTIONS.dt_particles,
+                    rbuff, counts, displs, MPI_OPTIONS.dt_particles,
                     ROOT_PROCESS, COMM),
         string("Fail in WriteParticlesXYZ_MPI -> MPI_Gatherv\n") + 
         "process rank\t" + to_string(MPI_OPTIONS.rank)
     );
 
+    // convert relative coordinates to absolute ones
     if (MPI_OPTIONS.rank == ROOT_PROCESS) {
-        __write_particles_XYZ(stream, GatheredParticles);
+        int coords[3];
+        for (int rank = 0; rank < MPI_OPTIONS.cells; ++rank) {
+            MPI_Cart_coords(COMM, rank, 3, coords);
+            for (int i = displs[rank]; i < displs[rank] + counts[rank]; ++i) {
+                rbuff[i].x += coords[0] * OPTIONS.simple_box_size;
+                rbuff[i].y += coords[1] * OPTIONS.simple_box_size;
+                rbuff[i].z += coords[2] * OPTIONS.simple_box_size;
+            }
+        }
+    }
+
+    if (MPI_OPTIONS.rank == ROOT_PROCESS) {
+        __write_particles_XYZ(stream, rbuff, time);
     }
 
     delete[] counts;
     delete[] displs;
-    delete[] GatheredParticles;
+    delete[] rbuff;
 }
 
 vector< vector<Particle> >
@@ -254,7 +267,7 @@ void __apply_periodic_boundary_conditions_MPI() {
     vector<int> particles_to_delete;
 
     // collect particles id to send
-    for (int i = 0; i < OPTIONS.particles_number; ++i) {
+    for (unsigned i = 0; i < particles.size(); ++i) {
         if (particles[i].x < 0) {
             particles[i].x += OPTIONS.simple_box_size;
             particles[i].image_x -= 1;
@@ -352,10 +365,123 @@ void __apply_periodic_boundary_conditions_MPI() {
 }
 
 void __compute_forces_MPI() {
+    for (auto& p : particles)
+        p.ax = p.ay = p.az = 0;
 
-    __acceleration_zero();
+    vector< vector<Particle> > neighbors = __get_neighbor_particles_MPI();
+
+    // double half_box_size = OPTIONS.simple_box_size / 2;
+    double squared_cutoff = OPTIONS.cutoff_radius * OPTIONS.cutoff_radius;
+    potential_energy = 0.0;
+
+    for (unsigned i = 0; i < particles.size(); ++i) {
+        // iterate over process particles
+        for (unsigned j = i + 1; j < particles.size(); ++j) {
+            double delta_x = particles[i].x - particles[j].x;
+            double delta_y = particles[i].y - particles[j].y;
+            double delta_z = particles[i].z - particles[j].z;
+
+            double squared_distance = delta_x * delta_x + delta_y * delta_y + delta_z * delta_z;
+
+            if (squared_distance < squared_cutoff) {
+                double distance_pow_6 = 1 / (squared_distance * squared_distance * squared_distance);
+                potential_energy += 4 * (distance_pow_6 * distance_pow_6 - distance_pow_6) 
+                    - OPTIONS.energy_cut;
+                double force = 48 * (distance_pow_6 * distance_pow_6 - 0.5 * distance_pow_6);
+
+                particles[i].ax += delta_x * force / squared_distance;
+                particles[j].ax -= delta_x * force / squared_distance;
+                particles[i].ay += delta_y * force / squared_distance;
+                particles[j].ay -= delta_y * force / squared_distance;
+                particles[i].az += delta_z * force / squared_distance;
+                particles[j].az -= delta_z * force / squared_distance;
+            }
+        }
+        // iterate over neighbor particles
+        for (int shift = 0; shift < 6; ++shift) {
+            for (unsigned j = 0; j < neighbors[shift].size(); ++j) {
+                double delta_x = particles[i].x - neighbors[shift][j].x;
+                double delta_y = particles[i].y - neighbors[shift][j].y;
+                double delta_z = particles[i].z - neighbors[shift][j].z;
+
+                // apply shift between cells
+                switch (shift) {
+                    case 0:
+                        delta_x += OPTIONS.simple_box_size;
+                        break;
+                    case 1:
+                        delta_x -= OPTIONS.simple_box_size;
+                        break;
+                    case 2:
+                        delta_y += OPTIONS.simple_box_size;
+                        break;
+                    case 3:
+                        delta_y -= OPTIONS.simple_box_size;
+                        break;
+                    case 4:
+                        delta_z += OPTIONS.simple_box_size;
+                        break;
+                    case 5:
+                        delta_z -= OPTIONS.simple_box_size;
+                        break;
+                }
+
+                double squared_distance = delta_x * delta_x + delta_y * delta_y + delta_z * delta_z;
+
+                if (squared_distance < squared_cutoff) {
+                    double distance_pow_6 = 1 / (squared_distance * squared_distance * squared_distance);
+                    potential_energy += 4 * (distance_pow_6 * distance_pow_6 - distance_pow_6) 
+                        - OPTIONS.energy_cut;
+                    double force = 48 * (distance_pow_6 * distance_pow_6 - 0.5 * distance_pow_6);
+
+                    particles[i].ax += delta_x * force / squared_distance;
+                    particles[i].ay += delta_y * force / squared_distance;
+                    particles[i].az += delta_z * force / squared_distance;
+                }
+            }
+        }
+    }
 }
 
-void MakeSimulationStep_MPi() {
+void __make_simulation_step_MPI() {
+    __first_half_step();
+    __apply_periodic_boundary_conditions_MPI();
+    __compute_forces_MPI();
+    __second_half_step(); 
+}
 
+void Simulate_MPI() {
+    // Initial output to file
+    ofstream out_file;
+    out_file.open("tmp/out.xyz");
+    WriteParticlesXYZ_MPI(out_file, 0);
+    
+    __compute_forces_MPI();
+    
+    // kinetic_energy = 0.0;
+    // for (auto& p : particles)
+    //     kinetic_energy += (p.vx * p.vx + p.vy * p.vy + p.vz * p.vz) / 2;
+    // double total_energy_initial = potential_energy + kinetic_energy;
+
+    // cout << "# step time PE KE TE drift T" << "\n";
+    // cout << 0 << " " << 0 << " " << potential_energy << " "
+    //     << kinetic_energy << " " << total_energy << " " << 0 << " "
+    //     << kinetic_energy * 2 / 3 / OPTIONS.global_particles_number << "\n";
+
+    for (unsigned step = 1; step <= OPTIONS.steps_number; ++step) {
+        __make_simulation_step_MPI();
+
+        // total_energy = potential_energy + kinetic_energy;
+
+        // if (step % OPTIONS.print_thermo_frequency == 0) {
+        //     cout << step << " " << step * OPTIONS.dt << " " << potential_energy << " "
+        //         << kinetic_energy << " " << total_energy << " "
+        //         << (total_energy - total_energy_initial) / total_energy_initial << " "
+        //         << kinetic_energy * 2 / 3 / OPTIONS.global_particles_number << "\n";
+        // }
+        if (step % OPTIONS.print_out_frequency == 0)
+            WriteParticlesXYZ_MPI(out_file, 0.0);
+    }
+
+    out_file.close();
 }

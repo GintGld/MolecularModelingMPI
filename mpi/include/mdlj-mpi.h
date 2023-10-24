@@ -29,10 +29,11 @@ void init_cart_comm(int argc, char** argv);
 void finilize_cart_comm();
 
 void GeneratePositions_MPI();
-void WriteParticlesXYZ_MPI(std::ofstream& stream);
+void WriteParticlesXYZ_MPI(std::ofstream& stream, double time = 0);
 
 std::vector< std::vector<Particle> >
 __get_neighbor_particles_MPI();
 void __apply_periodic_boundary_conditions_MPI();
 void __compute_forces_MPI();
-void MakeSimulationStep_MPI();
+void __make_simulation_step_MPI();
+void Simulate_MPI();
