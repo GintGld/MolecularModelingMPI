@@ -19,7 +19,7 @@ struct Particle {
 
 struct __system_options {
     int dimx, dimy, dimz;
-    unsigned particles_number = 216;
+    unsigned global_particles_number = 216;
     double density = 0.5;
     double simple_box_size;
     double T0 = 1.0;
@@ -31,9 +31,7 @@ struct __system_options {
     unsigned steps_number = 100;
     unsigned print_thermo_frequency = 100;
     unsigned print_out_frequency = 100;
-    bool write_output_in_one_file = false;
     bool use_energy_correction = false;
-    bool print_unfolded_coordinates = false;
     bool read_and_print_with_velocity = true;
 };
 
@@ -41,6 +39,7 @@ extern __system_options OPTIONS;
 extern std::vector<Particle> particles;
 extern double potential_energy;
 extern double kinetic_energy;
+extern double total_energy;
 
 void PrintUsageInfo();
 void ParseCommandLineArguments(int argc, char** argv);
@@ -51,9 +50,8 @@ std::vector< std::vector<Particle> > __generate_positions_per_cell();
 void GenerateVelocities(std::mt19937& rng);
 
 // non public function, used only from `WriteParticlesXYZ_MPI`
-void __write_particles_XYZ(std::ofstream& stream, Particle* buff);
+void __write_particles_XYZ(std::ofstream& stream, Particle* buff,double time);
 
 void __acceleration_zero();
-void __compute_forces_and_potential_energy();
 void __first_half_step();
 void __second_half_step();
