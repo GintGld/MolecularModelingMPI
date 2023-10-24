@@ -177,3 +177,30 @@ void __write_particles_XYZ(ofstream& stream, Particle* buff) {
              << buff[i].vx << ' ' << buff[i].vy << ' ' << buff[i].vz << "\n";
 }
 
+void __acceleration_zero() {
+    for (auto& p : particles)
+        p.ax = p.ay = p.az = 0;
+}
+
+void __first_half_step() {
+    for (auto& p : particles) {
+        p.x += p.vx * OPTIONS.dt + 0.5 * OPTIONS.dt * OPTIONS.dt * p.ax;
+        p.y += p.vy * OPTIONS.dt + 0.5 * OPTIONS.dt * OPTIONS.dt * p.ay;
+        p.z += p.vz * OPTIONS.dt + 0.5 * OPTIONS.dt * OPTIONS.dt * p.az;
+
+        p.vx += 0.5 * OPTIONS.dt * p.ax;
+        p.vy += 0.5 * OPTIONS.dt * p.ay;
+        p.vz += 0.5 * OPTIONS.dt * p.az;
+    }
+}
+
+void __second_half_step() {
+    kinetic_energy = 0.0;
+    for (auto& p : particles) {
+        p.vx += 0.5 * OPTIONS.dt * p.ax;
+        p.vy += 0.5 * OPTIONS.dt * p.ay;
+        p.vz += 0.5 * OPTIONS.dt * p.az;
+
+        kinetic_energy += (p.vx * p.vx + p.vy * p.vy + p.vz * p.vz) / 2;
+    }
+}

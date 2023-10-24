@@ -203,6 +203,63 @@ void WriteParticlesXYZ_MPI(ofstream& stream) {
     delete[] GatheredParticles;
 }
 
-void MakeSimulationStep() {
+vector< vector<Particle> >
+__get_neighbor_particles_MPI() {
+    /*
+     * Get neighbor particles to calculate forces
+    */
+    int displs[6], counts[6];
+
+    // get number of particles from each neighbor (6 neighbors)
+    int number_of_particles = particles.size(), neighbor_number = 0;
+    MPI_Apply(
+        MPI_Neighbor_allgather(&number_of_particles, 1, MPI_INT,
+                               counts, 1, MPI_INT,
+                               COMM),
+        string("Fail in __get_neighbor_particles_MPI -> MPI_Neighbor_allgather.\n") + 
+        "process rank\t" + to_string(MPI_OPTIONS.rank)
+    );
+
+    for (int i = 0; i < 6; ++i) {
+        neighbor_number += counts[i];
+        displs[i] = (i == 0) ? 0 : displs[i - 1] + counts[i - 1];
+    }
+
+    // cout << MPI_OPTIONS.rank << ' ' << neighbor_number << "\n";
+    // for (int i = 0; i < 6; ++i)
+    //     cout << counts[i] << ' ' << displs[i] << "\n";
+
+    Particle* buff = new Particle[neighbor_number];
+
+    MPI_Apply(
+        MPI_Neighbor_allgatherv(particles.data(), particles.size(), MPI_OPTIONS.dt_particles,
+                                buff, counts, displs, MPI_OPTIONS.dt_particles,
+                                COMM),
+        string("Fail in __get_neighbor_particles_MPI -> MPI_Neighbor_allgather.\n") + 
+        "process rank\t" + to_string(MPI_OPTIONS.rank)
+    );
+
+    vector< vector<Particle> > neighbor_particles(6);
+    for (int i = 0; i < 6; ++i) {
+        for (int j = 0; j < counts[i]; ++j) {
+            neighbor_particles[i].push_back( buff[displs[i] + j] );
+        }
+    }
+    
+    delete[] buff;
+
+    return neighbor_particles;
+}
+
+void __apply_periodic_boundary_conditions_MPI() {
+
+}
+
+void __compute_forces_MPI() {
+
+    __acceleration_zero();
+}
+
+void MakeSimulationStep_MPi() {
 
 }

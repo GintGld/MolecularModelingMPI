@@ -31,4 +31,8 @@ void finilize_cart_comm();
 void GeneratePositions_MPI();
 void WriteParticlesXYZ_MPI(std::ofstream& stream);
 
-void MakeSimulationStep();
+std::vector< std::vector<Particle> >
+__get_neighbor_particles_MPI();
+void __apply_periodic_boundary_conditions_MPI();
+void __compute_forces_MPI();
+void MakeSimulationStep_MPI();

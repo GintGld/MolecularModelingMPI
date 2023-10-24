@@ -53,5 +53,7 @@ void GenerateVelocities(std::mt19937& rng);
 // non public function, used only from `WriteParticlesXYZ_MPI`
 void __write_particles_XYZ(std::ofstream& stream, Particle* buff);
 
+void __acceleration_zero();
 void __compute_forces_and_potential_energy();
 void __first_half_step();
+void __second_half_step();
