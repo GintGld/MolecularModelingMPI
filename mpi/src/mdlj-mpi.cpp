@@ -427,7 +427,6 @@ void Simulate_MPI() {
     kinetic_energy = 0.0;
     for (auto& p : particles)
         kinetic_energy += (p.vx * p.vx + p.vy * p.vy + p.vz * p.vz) / 2;
-    cout << potential_energy << ' ' <<  kinetic_energy << "\n";
 
     ofstream stats("tmp/out.stat");
     stats << "step,PE,KE,TE,drift,T\n";
