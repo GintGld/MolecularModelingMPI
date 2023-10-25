@@ -19,7 +19,6 @@ struct Particle {
 
 struct __system_options {
     int dimx = 1, dimy = 1, dimz = 1;
-    double lenx, leny, lenz;
     unsigned global_particles_number = 216;
     double density = 0.5;
     double simple_box_size;
@@ -48,7 +47,7 @@ void ParseCommandLineArguments(int argc, char** argv);
 // non public function, used only from `GeneratePositions_MPI`
 std::vector< std::vector<Particle> > __generate_positions_per_cell();
 
-void GenerateVelocities(std::mt19937& rng);
+void __generate_velocities(std::vector<std::vector<Particle>>& particles_per_cell);
 
 // non public function, used only from `WriteParticlesXYZ_MPI`
 void __write_particles_XYZ(std::ofstream& stream, Particle* buff,double time);

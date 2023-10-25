@@ -102,6 +102,8 @@ void GeneratePositions_MPI() {
         // particles for corresponding cells
         vector< vector<Particle> > particles_divided_by_cells = __generate_positions_per_cell();
 
+        __generate_velocities(particles_divided_by_cells);
+
         // Construct info arrays for `MPI_Scatterv` from vector
         counts = new int[MPI_OPTIONS.cells];
         displs = new int[MPI_OPTIONS.cells];

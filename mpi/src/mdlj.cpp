@@ -68,10 +68,6 @@ void ParseCommandLineArguments(int argc, char** argv) {
         / OPTIONS.dimz
     );
 
-    OPTIONS.lenx = OPTIONS.simple_box_size * OPTIONS.dimx;
-    OPTIONS.leny = OPTIONS.simple_box_size * OPTIONS.dimy;
-    OPTIONS.lenz = OPTIONS.simple_box_size * OPTIONS.dimz;
-
     double rr3 = 1 / (OPTIONS.cutoff_radius * OPTIONS.cutoff_radius * OPTIONS.cutoff_radius);
     OPTIONS.energy_cut = 4 * (rr3 * rr3 * rr3 * rr3 - rr3 * rr3);
     if (OPTIONS.use_energy_correction) {
@@ -83,7 +79,6 @@ vector< vector<Particle> > __generate_positions_per_cell() {
     // Find the lowest perfect cube, n3, greater than or equal to the number of particles
     int lattice_size = 1;
     while (lattice_size * lattice_size * lattice_size 
-            * OPTIONS.dimx * OPTIONS.dimy * OPTIONS.dimz 
             < (int)(OPTIONS.global_particles_number)) {
         lattice_size++;
     }
@@ -128,53 +123,66 @@ vector< vector<Particle> > __generate_positions_per_cell() {
     return particles_divided_by_cells;
 }
 
-void GenerateVelocities(std::mt19937& rng) {
+void __generate_velocities(vector<vector<Particle>>& particles_per_cell) {
     std::normal_distribution<double> distribution(0, 1);
     
-    for (auto& particle : particles) {
-        particle.vx = distribution(rng);
-        particle.vy = distribution(rng);
-        particle.vz = distribution(rng);
+    std::mt19937 rng;
+
+    for (auto& cell : particles_per_cell) {
+        for (auto& p : cell) {
+            p.vx = distribution(rng);
+            p.vy = distribution(rng);
+            p.vz = distribution(rng);
+        }
     }
 
     // Get the velocity of system's center-of-mass
     Particle center_of_mass;  // Mind that the default vx, vy, vz for struct Particle is set to 0
-    for (const auto& particle : particles) {
-        center_of_mass.vx += particle.vx;
-        center_of_mass.vy += particle.vy;
-        center_of_mass.vz += particle.vz;
+    for (const auto& cell : particles_per_cell) {
+        for (const auto& p : cell) {
+            center_of_mass.vx += p.vx;
+            center_of_mass.vy += p.vy;
+            center_of_mass.vz += p.vz;
+        }
     }
+    // cout << MPI_OPTIONS.rank << ' ' << center_of_mass.vx << ' ' << center_of_mass.vy << ' ' << center_of_mass.vz << "\n";
     center_of_mass.vx /= OPTIONS.global_particles_number;
     center_of_mass.vy /= OPTIONS.global_particles_number;
     center_of_mass.vz /= OPTIONS.global_particles_number;
     
     // Take away any center-of-mass drift and calculate kinetic energy
     double kinetic_energy = 0.0;
-    for (auto& particle : particles) {
-        particle.vx -= center_of_mass.vx;
-        particle.vy -= center_of_mass.vy;
-        particle.vz -= center_of_mass.vz;
-        kinetic_energy += (particle.vx * particle.vx 
-            + particle.vy * particle.vy 
-            + particle.vz * particle.vz) / 2;
+    for (auto& cell : particles_per_cell) {
+        for (auto& p : cell) {
+            p.vx -= center_of_mass.vx;
+            p.vy -= center_of_mass.vy;
+            p.vz -= center_of_mass.vz;
+            kinetic_energy += (p.vx * p.vx + p.vy * p.vy + p.vz * p.vz) / 2;
+        }
     }
 
     // Set the system's temperature to the initial temperature T0
     double T_current = kinetic_energy / OPTIONS.global_particles_number * 2 / 3;
     double velocity_factor = sqrt(OPTIONS.T0 / T_current);
-    for (auto& particle : particles) {
-        particle.vx *= velocity_factor;
-        particle.vy *= velocity_factor;
-        particle.vz *= velocity_factor;
+    for (auto& cell : particles_per_cell) {
+        for (auto& p : cell) {
+            p.vx *= velocity_factor;
+            p.vy *= velocity_factor;
+            p.vz *= velocity_factor;
+        }
     }
+
+    // cout << MPI_OPTIONS.rank;
+    // for (const auto& p : particles)
+    //     cout << p.vx << ' ' << p.vy << ' ' << p.vz << "\n";
 }
 
 void __write_particles_XYZ(ofstream& stream, Particle* buff, double time) {
     stream << OPTIONS.global_particles_number << "\n";
     stream << "Lattice=\" " 
-        << OPTIONS.lenx << " 0.0 0.0 0.0 "
-        << OPTIONS.leny << " 0.0 0.0 0.0 " 
-        << OPTIONS.lenz << " \"";
+        << OPTIONS.simple_box_size * OPTIONS.dimx << " 0.0 0.0 0.0 "
+        << OPTIONS.simple_box_size * OPTIONS.dimy << " 0.0 0.0 0.0 " 
+        << OPTIONS.simple_box_size * OPTIONS.dimz << " \"";
     if (OPTIONS.read_and_print_with_velocity) {
         stream << " Properties=pos:R:3:velo:R:3";
     }
