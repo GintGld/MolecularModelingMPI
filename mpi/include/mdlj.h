@@ -18,7 +18,8 @@ struct Particle {
 };
 
 struct __system_options {
-    int dimx, dimy, dimz;
+    int dimx = 1, dimy = 1, dimz = 1;
+    double lenx, leny, lenz;
     unsigned global_particles_number = 216;
     double density = 0.5;
     double simple_box_size;

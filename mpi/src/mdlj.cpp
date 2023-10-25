@@ -67,6 +67,11 @@ void ParseCommandLineArguments(int argc, char** argv) {
         / OPTIONS.dimy
         / OPTIONS.dimz
     );
+
+    OPTIONS.lenx = OPTIONS.simple_box_size * OPTIONS.dimx;
+    OPTIONS.leny = OPTIONS.simple_box_size * OPTIONS.dimy;
+    OPTIONS.lenz = OPTIONS.simple_box_size * OPTIONS.dimz;
+
     double rr3 = 1 / (OPTIONS.cutoff_radius * OPTIONS.cutoff_radius * OPTIONS.cutoff_radius);
     OPTIONS.energy_cut = 4 * (rr3 * rr3 * rr3 * rr3 - rr3 * rr3);
     if (OPTIONS.use_energy_correction) {
@@ -100,10 +105,12 @@ vector< vector<Particle> > __generate_positions_per_cell() {
         );
 
         // push particle for corresponding vector
+        // coordinates are relative
+        // (each cell has its own coordinate system)
         particles_divided_by_cells[rank].push_back({
-            ((double)index_x + 0.5) * OPTIONS.simple_box_size * OPTIONS.dimx / lattice_size,
-            ((double)index_y + 0.5) * OPTIONS.simple_box_size * OPTIONS.dimy / lattice_size,
-            ((double)index_z + 0.5) * OPTIONS.simple_box_size * OPTIONS.dimz / lattice_size
+            ((double)index_x + 0.5) * OPTIONS.simple_box_size * OPTIONS.dimx / lattice_size - coords[0] * OPTIONS.simple_box_size,
+            ((double)index_y + 0.5) * OPTIONS.simple_box_size * OPTIONS.dimy / lattice_size - coords[1] * OPTIONS.simple_box_size,
+            ((double)index_z + 0.5) * OPTIONS.simple_box_size * OPTIONS.dimz / lattice_size - coords[2] * OPTIONS.simple_box_size
         });
 
         // make step for geometric indices
@@ -165,9 +172,9 @@ void GenerateVelocities(std::mt19937& rng) {
 void __write_particles_XYZ(ofstream& stream, Particle* buff, double time) {
     stream << OPTIONS.global_particles_number << "\n";
     stream << "Lattice=\" " 
-        << OPTIONS.simple_box_size * OPTIONS.dimx << " 0.0 0.0 0.0 "
-        << OPTIONS.simple_box_size * OPTIONS.dimy << " 0.0 0.0 0.0 " 
-        << OPTIONS.simple_box_size * OPTIONS.dimz << " \"";
+        << OPTIONS.lenx << " 0.0 0.0 0.0 "
+        << OPTIONS.leny << " 0.0 0.0 0.0 " 
+        << OPTIONS.lenz << " \"";
     if (OPTIONS.read_and_print_with_velocity) {
         stream << " Properties=pos:R:3:velo:R:3";
     }
@@ -182,7 +189,6 @@ void __write_particles_XYZ(ofstream& stream, Particle* buff, double time) {
 
 void __first_half_step() {
     for (auto& p : particles) {
-        cout << MPI_OPTIONS.rank << ' ' << p.vx * OPTIONS.dt + 0.5 * OPTIONS.dt * OPTIONS.dt * p.ax << "\n";
         p.x += p.vx * OPTIONS.dt + 0.5 * OPTIONS.dt * OPTIONS.dt * p.ax;
         p.y += p.vy * OPTIONS.dt + 0.5 * OPTIONS.dt * OPTIONS.dt * p.ay;
         p.z += p.vz * OPTIONS.dt + 0.5 * OPTIONS.dt * OPTIONS.dt * p.az;

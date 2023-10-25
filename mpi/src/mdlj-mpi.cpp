@@ -96,6 +96,7 @@ void GeneratePositions_MPI() {
 
     // root process generates all particles in a sc1 and 
     // scatters particles for their cells
+    // (coordinates are relative)
     if (MPI_OPTIONS.rank == ROOT_PROCESS) {
         // create vector of vectors to separate
         // particles for corresponding cells
@@ -220,6 +221,7 @@ vector< vector<Particle> >
 __get_neighbor_particles_MPI() {
     /*
      * Get neighbor particles to calculate forces
+     * returned coordinates are relative
     */
     int displs[6], counts[6];
 
@@ -267,6 +269,8 @@ void __apply_periodic_boundary_conditions_MPI() {
     vector<int> particles_to_delete;
 
     // collect particles id to send
+    // and fix their coordinates
+    // to be correct in new cell
     for (unsigned i = 0; i < particles.size(); ++i) {
         if (particles[i].x < 0) {
             particles[i].x += OPTIONS.simple_box_size;
@@ -357,6 +361,7 @@ void __apply_periodic_boundary_conditions_MPI() {
     for(int i = particles_to_delete.size() - 1; i >= 0; --i)
         particles.erase(particles.begin() + particles_to_delete[i]);
 
+    // insert received particles
     if (number_to_load > 0)
         particles.insert(particles.end(), rbuff, rbuff + number_to_load);
 
