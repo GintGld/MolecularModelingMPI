@@ -92,12 +92,7 @@ vector< vector<Particle> > __generate_positions_per_cell() {
         coords[0] = (index_x * OPTIONS.dimx) / lattice_size;
         coords[1] = (index_y * OPTIONS.dimy) / lattice_size;
         coords[2] = (index_z * OPTIONS.dimz) / lattice_size;
-        MPI_Apply(
-            MPI_Cart_rank(COMM, coords, &rank),
-            string("Fail in getting rank from coordinates\n") + 
-            "coordinates\t" + to_string(coords[0]) + ' ' + to_string(coords[1]) + ' ' + to_string(coords[2]) + 
-            "process rank\t" + to_string(MPI_OPTIONS.rank)
-        );
+        MPI_Cart_rank(COMM, coords, &rank);
 
         // push particle for corresponding vector
         // coordinates are relative

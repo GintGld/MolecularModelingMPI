@@ -10,19 +10,6 @@ using std::ofstream;
 MPI_Comm COMM;
 __mpi_options MPI_OPTIONS;
 
-void MPI_Apply(int ierr, string error_message) {
-    /*
-     * Wrapper for all MPI functions that
-     * return error status as output
-     * (almost all according to documentation)
-    */
-    if (ierr != MPI_SUCCESS) {
-        cout << "USER CATCHED ERROR [" << ierr << "]\n"
-             << error_message << "\n";
-        MPI_Abort(COMM, EXIT_FAILURE);
-    }
-}
-
 void init_cart_comm(int argc, char** argv) {
     /*
      * create Cartesian communicator and
@@ -43,35 +30,19 @@ void init_cart_comm(int argc, char** argv) {
     }
 
     // init particle data type
-    MPI_Apply(
-        MPI_Type_contiguous(12, MPI_DOUBLE, &MPI_OPTIONS.dt_particles),
-        "Fail in creating particle mpi-data type"
-    );
-    MPI_Apply(
-        MPI_Type_commit(&MPI_OPTIONS.dt_particles),
-        "Fail in commiting particle mpi-data type"
-    );
+    MPI_Type_contiguous(12, MPI_DOUBLE, &MPI_OPTIONS.dt_particles);
+    MPI_Type_commit(&MPI_OPTIONS.dt_particles);
 
     // Create Cartesian Commutator
     int reorder = 0;
     int dims[3] = {OPTIONS.dimx, OPTIONS.dimy, OPTIONS.dimz}, periods[3] = {1,1,1};
-    MPI_Apply(
-        MPI_Cart_create(MPI_COMM_WORLD, 3, dims, periods, reorder, &COMM),
-        "Fail to create Cartesian communicator"
-    );
+    MPI_Cart_create(MPI_COMM_WORLD, 3, dims, periods, reorder, &COMM);
     
     // Get rank of the process
-    MPI_Apply(
-        MPI_Cart_map(COMM, 3, dims, periods, &MPI_OPTIONS.rank),
-        string("Fail in getting rank of the process.\n")
-    );
+    MPI_Cart_map(COMM, 3, dims, periods, &MPI_OPTIONS.rank);
 
     // Get process coordinates
-    MPI_Apply(
-        MPI_Cart_coords(COMM, MPI_OPTIONS.rank, 3, MPI_OPTIONS.coords),
-        string("fail in getting coordinates.\n") +
-        string("rank:\t") + to_string(MPI_OPTIONS.rank)
-    );
+    MPI_Cart_coords(COMM, MPI_OPTIONS.rank, 3, MPI_OPTIONS.coords);
 }
 
 void finilize_cart_comm() {
@@ -122,25 +93,17 @@ void GeneratePositions_MPI() {
     }
 
     // send number of particles for each cell
-    MPI_Apply(
-        MPI_Scatter(counts, 1, MPI_INT,
-                    &number_of_particles, 1, MPI_INT, 
-                    ROOT_PROCESS, COMM),
-       string("Fail in GeneratePositions_MPI -> MPI_Scatter\n") + 
-       "process rank\t" + to_string(MPI_OPTIONS.rank)
-    );
-    
+    MPI_Scatter(counts, 1, MPI_INT,
+                &number_of_particles, 1, MPI_INT, 
+                ROOT_PROCESS, COMM);
+
     // allocate memory for input
     particles_for_current_process = new Particle[number_of_particles];
 
     // send particles for cells
-    MPI_Apply(
-        MPI_Scatterv(sendbuff, counts, displs, MPI_OPTIONS.dt_particles,
-                     particles_for_current_process, number_of_particles, MPI_OPTIONS.dt_particles,
-                     ROOT_PROCESS, COMM),
-        string("Fail in GeneratePositions_MPI -> MPI_Scatter\n") + 
-        "process rank\t" + to_string(MPI_OPTIONS.rank)
-    );
+    MPI_Scatterv(sendbuff, counts, displs, MPI_OPTIONS.dt_particles,
+                 particles_for_current_process, number_of_particles, MPI_OPTIONS.dt_particles,
+                 ROOT_PROCESS, COMM);
 
     // push collected data to vector
     particles.clear();
@@ -169,13 +132,9 @@ void WriteParticlesXYZ_MPI(ofstream& stream, double time) {
 
     // get number of particles in each cell
     int particles_per_cell = particles.size();
-    MPI_Apply(
-        MPI_Gather(&particles_per_cell, 1, MPI_INT,
-                   counts, 1, MPI_INT,
-                   ROOT_PROCESS, COMM),
-        string("Fail in WriteParticlesXYZ_MPI -> MPI_Gather\n") + 
-        "process rank\t" + to_string(MPI_OPTIONS.rank)
-    );
+    MPI_Gather(&particles_per_cell, 1, MPI_INT,
+               counts, 1, MPI_INT,
+               ROOT_PROCESS, COMM);
 
     if (MPI_OPTIONS.rank == ROOT_PROCESS) {
         // allocate memory for `displs` array
@@ -188,13 +147,9 @@ void WriteParticlesXYZ_MPI(ofstream& stream, double time) {
     }
 
     // Get particles from all cells
-    MPI_Apply(
-        MPI_Gatherv(particles.data(), particles.size(), MPI_OPTIONS.dt_particles,
-                    rbuff, counts, displs, MPI_OPTIONS.dt_particles,
-                    ROOT_PROCESS, COMM),
-        string("Fail in WriteParticlesXYZ_MPI -> MPI_Gatherv\n") + 
-        "process rank\t" + to_string(MPI_OPTIONS.rank)
-    );
+    MPI_Gatherv(particles.data(), particles.size(), MPI_OPTIONS.dt_particles,
+                rbuff, counts, displs, MPI_OPTIONS.dt_particles,
+                ROOT_PROCESS, COMM);
 
     // convert relative coordinates to absolute ones
     if (MPI_OPTIONS.rank == ROOT_PROCESS) {
@@ -228,13 +183,9 @@ __get_neighbor_particles_MPI() {
 
     // get number of particles from each neighbor (6 neighbors)
     int number_of_particles = particles.size(), neighbor_number = 0;
-    MPI_Apply(
-        MPI_Neighbor_allgather(&number_of_particles, 1, MPI_INT,
-                               counts, 1, MPI_INT,
-                               COMM),
-        string("Fail in __get_neighbor_particles_MPI -> MPI_Neighbor_allgather.\n") + 
-        "process rank\t" + to_string(MPI_OPTIONS.rank)
-    );
+    MPI_Neighbor_allgather(&number_of_particles, 1, MPI_INT,
+                           counts, 1, MPI_INT,
+                           COMM);
 
     // make info arrays
     for (int i = 0; i < 6; ++i) {
@@ -244,13 +195,9 @@ __get_neighbor_particles_MPI() {
 
     // get particles from particles
     Particle* buff = new Particle[neighbor_number];
-    MPI_Apply(
-        MPI_Neighbor_allgatherv(particles.data(), particles.size(), MPI_OPTIONS.dt_particles,
-                                buff, counts, displs, MPI_OPTIONS.dt_particles,
-                                COMM),
-        string("Fail in __get_neighbor_particles_MPI -> MPI_Neighbor_allgather.\n") + 
-        "process rank\t" + to_string(MPI_OPTIONS.rank)
-    );
+    MPI_Neighbor_allgatherv(particles.data(), particles.size(), MPI_OPTIONS.dt_particles,
+                            buff, counts, displs, MPI_OPTIONS.dt_particles,
+                            COMM);
 
     // convert to vector
     vector< vector<Particle> > neighbor_particles(6);
@@ -338,11 +285,7 @@ void __apply_periodic_boundary_conditions_MPI() {
 
     // get number of particles to load
     int rcounts[6], rdispls[6];
-    MPI_Apply(
-        MPI_Neighbor_alltoall(scounts, 1, MPI_INT, rcounts, 1, MPI_INT, COMM),
-        string("Fail in __apply_periodic_boundary_conditions_MPI -> MPI_Neighbor_alltoall\n") + 
-        "process rank\t" + to_string(MPI_OPTIONS.rank)
-    );
+    MPI_Neighbor_alltoall(scounts, 1, MPI_INT, rcounts, 1, MPI_INT, COMM);
 
     // generate receive displs
     for (int i = 0; i < 6; ++i)
@@ -351,12 +294,8 @@ void __apply_periodic_boundary_conditions_MPI() {
     // collect neighbors particles
     int number_to_load = rdispls[5] + rcounts[5];
     Particle* rbuff = (number_to_load == 0) ? nullptr : new Particle[number_to_load];
-    MPI_Apply(
-        MPI_Neighbor_alltoallv(sbuff, scounts, sdispls, MPI_OPTIONS.dt_particles,
-                               rbuff, rcounts, rdispls, MPI_OPTIONS.dt_particles, COMM),
-        string("Fail in __apply_periodic_boundary_conditions_MPI -> MPI_Neighbor_alltoallv\n") + 
-        "process rank\t" + to_string(MPI_OPTIONS.rank)
-    );
+    MPI_Neighbor_alltoallv(sbuff, scounts, sdispls, MPI_OPTIONS.dt_particles,
+                           rbuff, rcounts, rdispls, MPI_OPTIONS.dt_particles, COMM);
 
     // delete sended particles
     for(int i = particles_to_delete.size() - 1; i >= 0; --i)

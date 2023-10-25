@@ -23,7 +23,6 @@ struct __mpi_options {
 extern MPI_Comm COMM;
 extern __mpi_options MPI_OPTIONS;
 
-void MPI_Apply(int ierr, std::string error_message);
 void init_cart_comm(int argc, char** argv);
 void finilize_cart_comm();
 
