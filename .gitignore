@@ -4,3 +4,5 @@
 mpi/main
 *.xyz
 tmp
+run-[0-9].sh
+run-[0-9][0-9].sh
