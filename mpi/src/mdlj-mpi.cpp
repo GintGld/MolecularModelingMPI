@@ -173,6 +173,27 @@ void WriteParticlesXYZ_MPI(ofstream& stream, double time) {
     delete[] rbuff;
 }
 
+void WriteEnergiesMPI(std::ofstream& stream, int step) {
+    double splitted_energies[2*MPI_OPTIONS.cells];
+    double pot_glob = 0, kin_glob = 0;
+
+    double local_energy[2] = {potential_energy, kinetic_energy};
+
+    // collect energies from all cells
+    MPI_Gather(local_energy, 2, MPI_DOUBLE, 
+               splitted_energies, 2, MPI_DOUBLE,
+               ROOT_PROCESS, COMM);
+
+    if (MPI_OPTIONS.rank == ROOT_PROCESS) {
+        for (int i = 0; i < MPI_OPTIONS.cells; ++i) {
+            pot_glob += splitted_energies[2 * i];
+            kin_glob += splitted_energies[2 * i + 1];
+        }
+
+        stream << step << ',' << pot_glob << ',' << kin_glob << ',' << pot_glob + kin_glob << "\n";
+    }
+}
+
 vector< vector<Particle> >
 __get_neighbor_particles_MPI() {
     /*
@@ -403,30 +424,25 @@ void Simulate_MPI() {
     
     __compute_forces_MPI();
     
-    // kinetic_energy = 0.0;
-    // for (auto& p : particles)
-    //     kinetic_energy += (p.vx * p.vx + p.vy * p.vy + p.vz * p.vz) / 2;
-    // double total_energy_initial = potential_energy + kinetic_energy;
+    kinetic_energy = 0.0;
+    for (auto& p : particles)
+        kinetic_energy += (p.vx * p.vx + p.vy * p.vy + p.vz * p.vz) / 2;
+    cout << potential_energy << ' ' <<  kinetic_energy << "\n";
 
-    // cout << "# step time PE KE TE drift T" << "\n";
-    // cout << 0 << " " << 0 << " " << potential_energy << " "
-    //     << kinetic_energy << " " << total_energy << " " << 0 << " "
-    //     << kinetic_energy * 2 / 3 / OPTIONS.global_particles_number << "\n";
+    ofstream stats("tmp/out.stat");
+    stats << "step,PE,KE,TE,drift,T\n";
+    WriteEnergiesMPI(stats);
 
     for (unsigned step = 1; step <= OPTIONS.steps_number; ++step) {
         __make_simulation_step_MPI();
 
-        // total_energy = potential_energy + kinetic_energy;
-
-        // if (step % OPTIONS.print_thermo_frequency == 0) {
-        //     cout << step << " " << step * OPTIONS.dt << " " << potential_energy << " "
-        //         << kinetic_energy << " " << total_energy << " "
-        //         << (total_energy - total_energy_initial) / total_energy_initial << " "
-        //         << kinetic_energy * 2 / 3 / OPTIONS.global_particles_number << "\n";
-        // }
         if (step % OPTIONS.print_out_frequency == 0)
-            WriteParticlesXYZ_MPI(out_file, 0.0);
+            WriteParticlesXYZ_MPI(out_file, step * OPTIONS.dt);
+
+        if (step % OPTIONS.print_thermo_frequency == 0)
+            WriteEnergiesMPI(stats, step);
     }
 
     out_file.close();
+    stats.close();
 }

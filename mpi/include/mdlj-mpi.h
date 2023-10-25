@@ -28,6 +28,7 @@ void finilize_cart_comm();
 
 void GeneratePositions_MPI();
 void WriteParticlesXYZ_MPI(std::ofstream& stream, double time = 0);
+void WriteEnergiesMPI(std::ofstream& stream, int step=0);
 
 std::vector< std::vector<Particle> >
 __get_neighbor_particles_MPI();
