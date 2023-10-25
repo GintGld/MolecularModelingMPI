@@ -50,8 +50,7 @@ std::vector< std::vector<Particle> > __generate_positions_per_cell();
 void __generate_velocities(std::vector<std::vector<Particle>>& particles_per_cell);
 
 // non public function, used only from `WriteParticlesXYZ_MPI`
-void __write_particles_XYZ(std::ofstream& stream, Particle* buff,double time);
+void __write_particles_XYZ(std::ofstream& stream, Particle* buff, double time);
 
-void __acceleration_zero();
 void __first_half_step();
 void __second_half_step();

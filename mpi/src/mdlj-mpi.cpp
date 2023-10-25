@@ -117,16 +117,15 @@ void GeneratePositions_MPI() {
         for (int i = 0; i < MPI_OPTIONS.cells; ++i) {
             for (int j = 0; j < counts[i]; ++j) {
                 sendbuff[displs[i] + j] = particles_divided_by_cells[i][j];
-           
             }
         }
     }
 
     // send number of particles for each cell
     MPI_Apply(
-       MPI_Scatter(counts, 1, MPI_INT,
-                   &number_of_particles, 1, MPI_INT, 
-                   ROOT_PROCESS, COMM),
+        MPI_Scatter(counts, 1, MPI_INT,
+                    &number_of_particles, 1, MPI_INT, 
+                    ROOT_PROCESS, COMM),
        string("Fail in GeneratePositions_MPI -> MPI_Scatter\n") + 
        "process rank\t" + to_string(MPI_OPTIONS.rank)
     );
@@ -157,7 +156,7 @@ void GeneratePositions_MPI() {
 void WriteParticlesXYZ_MPI(ofstream& stream, double time) {
     /*
      * Collect particles from all cells and
-     * Write them using `WriteParticlesXYZ`
+     * Write them using `__write_particlesXYZ`
     */
     // Pointers for `MPI_Gatherv`, neccecary only in root process
     Particle *rbuff = nullptr;
@@ -354,7 +353,7 @@ void __apply_periodic_boundary_conditions_MPI() {
     Particle* rbuff = (number_to_load == 0) ? nullptr : new Particle[number_to_load];
     MPI_Apply(
         MPI_Neighbor_alltoallv(sbuff, scounts, sdispls, MPI_OPTIONS.dt_particles,
-                            rbuff, rcounts, rdispls, MPI_OPTIONS.dt_particles, COMM),
+                               rbuff, rcounts, rdispls, MPI_OPTIONS.dt_particles, COMM),
         string("Fail in __apply_periodic_boundary_conditions_MPI -> MPI_Neighbor_alltoallv\n") + 
         "process rank\t" + to_string(MPI_OPTIONS.rank)
     );

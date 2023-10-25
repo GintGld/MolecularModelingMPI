@@ -17,8 +17,7 @@
 
 struct __mpi_options {
     MPI_Datatype dt_particles;
-    MPI_Comm COMM = MPI_COMM_WORLD;
-    int cells, rank, coords[3], neighbors[3][2];
+    int cells, rank, coords[3];
 };
 
 extern MPI_Comm COMM;

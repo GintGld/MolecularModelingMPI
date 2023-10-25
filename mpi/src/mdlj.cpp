@@ -171,10 +171,6 @@ void __generate_velocities(vector<vector<Particle>>& particles_per_cell) {
             p.vz *= velocity_factor;
         }
     }
-
-    // cout << MPI_OPTIONS.rank;
-    // for (const auto& p : particles)
-    //     cout << p.vx << ' ' << p.vy << ' ' << p.vz << "\n";
 }
 
 void __write_particles_XYZ(ofstream& stream, Particle* buff, double time) {
