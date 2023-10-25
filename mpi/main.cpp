@@ -22,7 +22,8 @@ int main(int argc, char** argv) {
         cout << "particles:\t" << OPTIONS.global_particles_number << "\n"
             << "Cells:\t\t" << MPI_OPTIONS.cells << "\n" 
             << "particles\nper cell:\t" << (double)(OPTIONS.global_particles_number) / (double)(MPI_OPTIONS.cells) << "\n"
-            << "TIME:\t\t" << stop - start << "\n"
+            << "Steps:\t\t" << OPTIONS.steps_number << "\n"
+            << "Time:\t\t" << stop - start << "\n"
             << "Precision:\t" << MPI_Wtick() << "\n";
     }
 
